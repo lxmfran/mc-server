@@ -1,0 +1,11 @@
+# Secrets and environment variables
+.env
+
+# Python files
+__pycache__/
+*.pyc
+
+# Log files
+*.log
+
+
