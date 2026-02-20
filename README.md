@@ -16,6 +16,6 @@ A system was designed to allow authenticated users to authorize their dynamic IP
 1. Clone this repository.
 2. Install Python dependencies: `pip install -r requirements.txt`
 3. Rename `.env.example` to `.env` and add your Discord API Token.
-4. Download the PaperMC server file (`paper-1.21.11-99.jar`) and place it in the root directory.
-5. Configure the allowed DDNS domains in `firewall_rules.sh` and `minecraft_server.py`.
-6. Run the bot and the server independently.
+4. Configure the allowed DDNS domains in `firewall_rules.sh` and `minecraft_server.py`.
+5. Run the bot and the server independently.
+6. It is highly recommended to run the server as a system service (declaring it as so) if you dont want to see the logs.
