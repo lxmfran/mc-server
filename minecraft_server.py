@@ -176,7 +176,7 @@ class MinecraftServer:
     def _validate_waypoint_name(self, name):
         if not name or len(name) > WAYPOINT_NAME_MAX_LEN:
             return False
-        return bool(WAYPOINT_NAME_PATTERN.match(name))
+        return WAYPOINT_NAME_PATTERN.match(name) is not None
 
     def handle_setwaypoint_command(self, player, full_command):
         parts = full_command.split(' ', 1)
@@ -417,6 +417,7 @@ class MinecraftServer:
                         # Reset crash counter if the server has been stable long enough
                         if self.restart_count > 0 and (now - server_start_time) > STABLE_UPTIME_THRESHOLD:
                             self.restart_count = 0
+                            self.logger.info("✅ Server stable — restart counter reset.")
                         time.sleep(1)
 
                     self.logger.warning("⚠️ Server process has terminated.")

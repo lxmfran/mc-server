@@ -8,7 +8,11 @@ from mcstatus import JavaServer
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
 SCRIPT_PATH = os.getenv('SCRIPT_PATH', '/home/minecraft/firewall_rules.sh')
-ALLOWED_CHANNEL_ID = int(os.getenv('ALLOWED_CHANNEL_ID', '0'))
+try:
+    ALLOWED_CHANNEL_ID = int(os.getenv('ALLOWED_CHANNEL_ID', '0'))
+except ValueError:
+    print("WARNING: ALLOWED_CHANNEL_ID is not a valid integer — defaulting to 0 (all channels)")
+    ALLOWED_CHANNEL_ID = 0
 ADMIN_ROLE_NAME = os.getenv('ADMIN_ROLE_NAME', '')
 # ----------------------------
 
