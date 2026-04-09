@@ -12,7 +12,15 @@ import threading
 import json
 import psutil
 import re
-import socket 
+import socket
+from dotenv import load_dotenv
+
+load_dotenv()
+
+WAYPOINT_NAME_MAX_LEN = 32
+WAYPOINT_NAME_PATTERN = re.compile(r'^[\w\-]+$')
+STABLE_UPTIME_THRESHOLD = 300  # seconds before restart_count resets
+
 
 class MinecraftServer:
     def __init__(self):
@@ -25,14 +33,24 @@ class MinecraftServer:
         self.tps = 20.0
         self.player_waypoints = {}
         self.waypoints_file = "waypoints.json"
-        self.pending_waypoints = {} 
+        self.pending_waypoints = {}
         self.load_waypoints()
 
         # --- SECURITY MAPPING (DDNS Application Layer) ---
-        self.player_domains = {
-            "User1": "user1.ddns.net",
-            "User2": "user2.ddns.net"
-        }
+        # Load from PLAYER_DOMAINS env var: "User1=user1.ddns.net,User2=user2.ddns.net"
+        self.player_domains = self._load_player_domains()
+
+    def _load_player_domains(self):
+        raw = os.getenv('PLAYER_DOMAINS', '')
+        domains = {}
+        for entry in raw.split(','):
+            entry = entry.strip()
+            if '=' in entry:
+                player, domain = entry.split('=', 1)
+                domains[player.strip()] = domain.strip()
+        if not domains:
+            self.logger.warning("⚠️  PLAYER_DOMAINS not set in .env — no players will be whitelisted.")
+        return domains
 
     def setup_logging(self):
         logging.basicConfig(
@@ -82,15 +100,15 @@ class MinecraftServer:
                     "uptime_hours": uptime_hours,
                     "tps": self.tps
                 }
-            except:
+            except Exception as e:
+                self.logger.error(f"Error reading server stats: {e}")
                 return None
         return None
 
     def send_chat_message(self, message):
         if self.server_process and self.running:
-            escaped_message = message.replace('"', '\\"')
-            command = f'tellraw @a {{"text":"{escaped_message}","color":"yellow"}}'
-            self.send_command(command)
+            payload = json.dumps({"text": message, "color": "yellow"})
+            self.send_command(f"tellraw @a {payload}")
 
     def handle_chat_commands(self, line):
         chat_pattern = r'<(\w+)> (![\w\s]+.*)'
@@ -155,6 +173,11 @@ class MinecraftServer:
         time.sleep(0.5)
         self.send_chat_message("📍 Waypoints: !setwaypoint <name> !waypoints !waypoint <name> !delwaypoint <name>")
 
+    def _validate_waypoint_name(self, name):
+        if not name or len(name) > WAYPOINT_NAME_MAX_LEN:
+            return False
+        return bool(WAYPOINT_NAME_PATTERN.match(name))
+
     def handle_setwaypoint_command(self, player, full_command):
         parts = full_command.split(' ', 1)
         if len(parts) < 2:
@@ -162,6 +185,9 @@ class MinecraftServer:
             return
         waypoint_name = parts[1].strip()
         if not waypoint_name:
+            return
+        if not self._validate_waypoint_name(waypoint_name):
+            self.send_chat_message(f"📍 {player}: Invalid waypoint name (max {WAYPOINT_NAME_MAX_LEN} alphanumeric/dash chars)")
             return
 
         if player not in self.player_waypoints:
@@ -328,7 +354,7 @@ class MinecraftServer:
                 self.server_process.stdin.flush()
                 return True
             except Exception as e:
-                pass
+                self.logger.error(f"Error sending command: {e}")
         return False
 
     def stop_server(self):
@@ -354,7 +380,7 @@ class MinecraftServer:
                         os.remove(old_backup)
                 return True
             except Exception as e:
-                pass
+                self.logger.error(f"💾 Backup failed: {e}")
         return False
 
     def run_24_7(self):
@@ -380,6 +406,7 @@ class MinecraftServer:
                     last_stats = time.time()
                     last_backup = time.time()
 
+                    server_start_time = time.time()
                     while self.server_process.poll() is None:
                         now = time.time()
                         if now - last_stats > INTERVAL_STATS:
@@ -387,19 +414,25 @@ class MinecraftServer:
                         if now - last_backup > INTERVAL_BACKUP:
                             self.backup_world()
                             last_backup = now
+                        # Reset crash counter if the server has been stable long enough
+                        if self.restart_count > 0 and (now - server_start_time) > STABLE_UPTIME_THRESHOLD:
+                            self.restart_count = 0
                         time.sleep(1)
 
                     self.logger.warning("⚠️ Server process has terminated.")
                     if self.restart_count < 10:
                         self.restart_count += 1
+                        self.logger.info(f"🔄 Restarting in 30s (attempt {self.restart_count}/10)...")
                         time.sleep(30)
                     else:
+                        self.logger.error("❌ Max restart attempts reached. Exiting.")
                         break
                 else:
                     time.sleep(30)
             except KeyboardInterrupt:
                 break
             except Exception as e:
+                self.logger.error(f"Unexpected error in run loop: {e}")
                 time.sleep(30)
         self.stop_server()
 

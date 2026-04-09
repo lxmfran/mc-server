@@ -6,20 +6,21 @@ LOG_FILE="/var/log/minecraft_firewall_update.log"
 
 # Associative array with DDNS domains (Example for GitHub)
 declare -A DOMAINS=(
-    ["User1"]="user1.ddns.net" 
+    ["User1"]="user1.ddns.net"
     ["User2"]="user2.ddns.net"
-)  
+)
 
 echo "$(date): Starting smart firewall update..." >> $LOG_FILE
 
-# Function to extract IP from DDNS domain
+# Function to extract IP from DDNS domain using dig for reliable parsing
 get_ip_from_domain() {
     local domain=$1
-    local ip=$(nslookup $domain | grep -A1 "Name:" | grep "Address:" | tail -1 | cut -d' ' -f2)
+    local ip
+    ip=$(dig +short +time=5 +tries=2 "$domain" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
 
     # Regex to verify valid IPv4 format
     if [[ $ip =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
-        echo $ip
+        echo "$ip"
     else
         echo "ERROR"
     fi
@@ -34,7 +35,7 @@ for name in "${!DOMAINS[@]}"; do
     domain="${DOMAINS[$name]}"
     
     if [ ! -z "$domain" ]; then
-        ip=$(get_ip_from_domain $domain)
+        ip=$(get_ip_from_domain "$domain")
         
         if [ "$ip" != "ERROR" ]; then
             DETECTED_VALID_IPS+=("$ip")
